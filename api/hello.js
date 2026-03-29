@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       ContentType: contentType,
     });
 
-    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 60 });
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
 
     return res.status(200).json({ uploadUrl, key });
   } catch (error) {
