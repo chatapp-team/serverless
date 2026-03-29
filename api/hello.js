@@ -1,15 +1,7 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import admin from 'firebase-admin';
 
-// 1. Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    // Tip: Ensure FIREBASE_SERVICE_ACCOUNT is a single-line string in Vercel settings
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
-  });
-}
-
+// Initialize S3 Client
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
@@ -19,40 +11,32 @@ const s3 = new S3Client({
 });
 
 export default async function handler(req, res) {
-  // --- START CORS BLOCK ---
+  // 1. CORS Setup (Essential for DartPad/Web)
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Change '*' to your domain in production
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
   // Handle Preflight request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
-  // --- END CORS BLOCK ---
 
+  // 2. Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // 3. Verify Firebase Token
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-       return res.status(401).json({ error: 'Missing Authorization Header' });
-    }
-
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const userId = decodedToken.uid;
-
-    const { filename, contentType } = req.body;
+    // 3. Get filename and type from body
+    // We use "test-user" since we removed Firebase authentication
+    const { filename = 'test-file.txt', contentType = 'text/plain' } = req.body;
     
-    // 4. Create the Key
-    const key = `uploads/${userId}/${Date.now()}-${filename}`;
+    // 4. Create the Key (File path in S3)
+    const key = `testing/${Date.now()}-${filename}`;
 
     // 5. Generate the Presigned URL
     const command = new PutObjectCommand({
@@ -61,11 +45,17 @@ export default async function handler(req, res) {
       ContentType: contentType,
     });
 
+    // URL valid for 60 seconds
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 60 });
 
-    return res.status(200).json({ uploadUrl, key });
+    // 6. Return the URL and Key
+    return res.status(200).json({ 
+      uploadUrl, 
+      key,
+      instructions: "To upload, send a PUT request to the uploadUrl with the file as the body."
+    });
   } catch (error) {
-    console.error('Error details:', error);
-    return res.status(401).json({ error: 'Authentication or Signing Failed' });
+    console.error('S3 Error:', error);
+    return res.status(500).json({ error: 'Failed to generate upload URL', details: error.message });
   }
 }
