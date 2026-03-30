@@ -62,8 +62,14 @@ export default async function handler(req, res) {
     });
 
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    //public URL returned to Flutter
+    const publicUrl = `https://inchatapp-media.s3.ap-south-2.amazonaws.com/${key}`;
 
-    return res.status(200).json({ uploadUrl, key });
+   return res.status(200).json({ 
+  uploadUrl: uploadUrl, 
+  key: key, 
+  publicUrl: publicUrl 
+});
   } catch (error) {
     console.error('Error details:', error);
     return res.status(401).json({ error: 'Authentication or Signing Failed' });
